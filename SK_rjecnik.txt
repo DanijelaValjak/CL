@@ -1,0 +1,254 @@
+import nltk
+from nltk import load_parser
+from nltk.tokenize import word_tokenize
+
+# Definiranje gramatike kao string
+grammar = """
+% start S
+S -> NP[NUM=?n] VP[NUM=?n]
+
+# NP (imenica) produkcije
+NP[NUM=?n, GEN=?g] -> Adj[NUM=?n, GEN=?g] N[NUM=?n, GEN=?g]
+NP[NUM=?n, GEN=?g] -> N[NUM=?n, GEN=?g]
+
+# VP (glagolske) produkcije
+VP[TENSE=?t, NUM=?n] -> V[TENSE=?t, NUM=?n]
+VP[TENSE=?t, NUM=?n] -> V[TENSE=?t, +AUX] VP[TENSE=?t, -AUX]
+
+# Leksičke produkcije za imenice
+N[NUM=sg, GEN=m] -> 'pas'
+N[NUM=pl, GEN=m] -> 'psi'
+N[NUM=sg, GEN=f] -> 'mačka'
+N[NUM=sg, GEN=f] -> 'ptica'
+
+# Leksičke produkcije za pridjeve
+Adj[NUM=sg, GEN=m] -> 'maleni'
+Adj[NUM=pl, GEN=m] -> 'opasni'
+Adj[NUM=sg, GEN=f] -> 'malena'
+
+# Leksičke produkcije za glagole
+V[TENSE=past, NUM=sg, -AUX] -> 'lajao'
+V[TENSE=pres, NUM=pl, -AUX] -> 'laju'
+V[TENSE=pres, NUM=sg, -AUX] -> 'prede'
+V[TENSE=pres, NUM=sg, -AUX] -> 'pjeva'
+
+# Leksičke produkcije za pomoćne glagole
+V[TENSE=past, +AUX] -> 'je'
+"""
+
+# Spremanje gramatike u datoteku s kodiranjem utf-8
+with open('grammar.fcfg', 'w', encoding='utf-8') as f:
+    f.write(grammar)
+
+# Učitavanje parsera
+cp = load_parser('grammar.fcfg')
+
+# Definiranje rečenica za parsiranje
+sentences = [
+    'Maleni pas je lajao.',
+    'Opasni psi laju.',
+    'Malena mačka prede.',
+    'Ptica pjeva.',
+]
+
+# Parsiranje i prikaz stabala za svaku rečenicu
+for sentence in sentences:
+    # Uklanjanje točke na kraju rečenice
+    sentence = sentence.rstrip('.')
+    tokens = word_tokenize(sentence.lower())
+    trees = list(cp.parse(tokens))
+    for tree in trees:
+        print(tree)
+        tree.draw()
+__________________________________________________
+%%writefile sem.fcfg
+% start S
+# Grammar Rules
+S[SEM=<?vp(?np)>] -> NP[SEM=?np] VP[SEM=?vp]
+VP[SEM=?v] -> IV[SEM=?v]
+# Lexical Rules
+NP[SEM=<dijete>] -> 'Dijete'
+NP[SEM=<covjek>] -> 'Čovjek'
+NP[SEM=<ptica>] -> 'Ptica'
+NP[SEM=<riba>] -> 'Riba'
+IV[SEM=<\x.puzati(x)>] -> 'puza'
+IV[SEM=<\x.hodati(x)>] -> 'hoda'
+IV[SEM=<\x.letjeti(x)>] -> 'leti'
+IV[SEM=<\x.plivati(x)>] -> 'pliva'
+
+import nltk
+from nltk.tokenize import word_tokenize
+from nltk import load_parser
+
+# Učitavanje gramatike
+cp = load_parser('sem.fcfg', trace=0)
+
+# Rečenice za parsiranje
+sentences = ['Dijete puza.', 'Čovjek hoda.', 'Ptica leti.', 'Riba pliva.', 'Čovjek leti.']
+
+# Uklanjanje točaka na kraju rečenica
+sentences = [sentence.rstrip('.') for sentence in sentences]
+
+# Tokenizacija rečenica
+tokens = [word_tokenize(sentence) for sentence in sentences]
+
+# Dobivanje parsiranih stabala i semantičkih reprezentacija
+trees = [list(cp.parse(token)) for token in tokens]
+sem_reps = [tree[0].label()['SEM'] for tree in trees if tree]
+
+# Ispis semantičkih reprezentacija
+for sem in sem_reps:
+    print(sem)
+
+# Postavljanje modela
+v = """
+    dijete => d
+    covjek => c
+    ptica => p
+    riba => r
+    puzati => {d}
+    hodati => {c}
+    letjeti => {p}
+    plivati => {r}
+"""
+val = nltk.Valuation.fromstring(v)
+g = nltk.Assignment(val.domain)
+m = nltk.Model(val.domain, val)
+
+# Evaluacija rečenica
+results = nltk.evaluate_sents(sentences, 'sem.fcfg', m, g)
+
+# Ispis rezultata evaluacije
+for result in results:
+    for (synrep, semrep, value) in result:
+        print(synrep)
+        print(semrep)
+        print(value)
+
+
+__________________________________________________
+import nltk
+from nltk.corpus import movie_reviews
+import random
+from nltk import FreqDist
+
+# Download movie_reviews corpus if not already downloaded
+nltk.download('movie_reviews')
+
+# Build the dataset
+documents = [(list(movie_reviews.words(fileid)), category)
+             for category in movie_reviews.categories()
+             for fileid in movie_reviews.fileids(category)]
+
+# Shuffle the documents to avoid any order bias
+random.shuffle(documents)
+
+# Build a list of the 2000 most common words as features
+all_words = nltk.FreqDist(w.lower() for w in movie_reviews.words())
+word_features = list(all_words.keys())[:2000]
+
+# Function to extract features from a document
+def document_features(document):
+    document_words = set(document)
+    features = {}
+    for word in word_features:
+        features['contains({})'.format(word)] = (word in document_words)
+    return features
+
+# Prepare the feature sets
+featuresets = [(document_features(d), c) for (d, c) in documents]
+
+# Split the dataset into training and testing sets
+train_set = featuresets[:1600]
+test_set = featuresets[1600:]
+
+# Train the Naive Bayes classifier
+classifier = nltk.NaiveBayesClassifier.train(train_set)
+
+# Evaluate the classifier
+print("Accuracy:", nltk.classify.accuracy(classifier, test_set))
+
+# Define reference sets for computing precision, recall, and F1 score
+refsets = nltk.defaultdict(set)
+testsets = nltk.defaultdict(set)
+
+for i, (feats, label) in enumerate(test_set):
+    refsets[label].add(i)
+    observed = classifier.classify(feats)
+    testsets[observed].add(i)
+
+# Print precision, recall, and F1 score for both positive and negative sentiments
+print("Precision (negative):", nltk.precision(refsets['neg'], testsets['neg']))
+print("Recall (negative):", nltk.recall(refsets['neg'], testsets['neg']))
+print("F1 Score (negative):", nltk.f_measure(refsets['neg'], testsets['neg']))
+
+print("Precision (positive):", nltk.precision(refsets['pos'], testsets['pos']))
+print("Recall (positive):", nltk.recall(refsets['pos'], testsets['pos']))
+print("F1 Score (positive):", nltk.f_measure(refsets['pos'], testsets['pos']))
+
+# Examples where the classifier matches the gold standard
+print("\nExamples where the classifier matches the gold standard:")
+for i, (feats, label) in enumerate(test_set):
+    observed = classifier.classify(feats)
+    if observed == label:
+        print("Correct:", " ".join(documents[1600 + i][0][:10]), "...")
+
+# Examples where the classifier does not match the gold standard
+print("\nExamples where the classifier does not match the gold standard:")
+for i, (feats, label) in enumerate(test_set):
+    observed = classifier.classify(feats)
+    if observed != label:
+        print("Incorrect:", " ".join(documents[1600 + i][0][:10]), "...")
+        print("Predicted:", observed, "Actual:", label)
+        break  # Print only one example for brevity
+
+__________________________________________________
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.cluster import KMeans
+
+# Korpus rečenica (dokumenata)
+sentences = [
+    "Machine learning algorithms use data to make predictions.",
+    "Deep learning models require large amounts of labeled data.",
+    "Natural language processing techniques analyze textual data.",
+    "Milena came home after finishing her workout, immediately took off her backpack, and washed her hands.",
+    "She sat down at the table to eat.",
+    "Then she focused on her homework, not thinking about tomorrow’s match.",
+    "How can you accentuate words in English?",
+    "Do you want to learn a new language quickly and efficiently?",
+    "Exploring English syntax: embark on an adventure through English sentence structure!"
+]
+
+# 1. Izračun TF-IDF mjere za svaku rečenicu
+vectorizer = TfidfVectorizer()
+X = vectorizer.fit_transform(sentences)
+
+# Ispis rezultirajućih TF-IDF vektora za svaku rečenicu
+print("TF-IDF vektori za svaku rečenicu:")
+for i, sentence in enumerate(sentences):
+    print(f"Rečenica {i+1}: {sentence}")
+    print(f"TF-IDF vektor: \n{X[i].toarray()}")
+    
+    print()
+
+# 2. Klasteriranje rečenica u 3 klastera pomoću K-Means algoritma
+kmeans = KMeans(n_clusters=3, random_state=0)
+kmeans.fit(X)
+
+# Ispis kojem klasteru pripada svaka rečenica
+print("Klasteri za svaku rečenicu:")
+for i, sentence in enumerate(sentences):
+    cluster = kmeans.labels_[i]
+    print(f"Rečenica '{sentence}' je u klasteru {cluster}")
+
+# Nova rečenica za koju određujemo klaster
+new_sentence = "Analiza podataka pomoću Pythona je izazovna."
+
+# Izračun TF-IDF vektora za novu rečenicu
+new_X = vectorizer.transform([new_sentence])
+
+# Klasteriranje nove rečenice
+predicted_cluster = kmeans.predict(new_X)[0]
+
+# Ispis rezultata
+print(f"Rečenica '{new_sentence}' pripada klasteru {predicted_cluster}")
